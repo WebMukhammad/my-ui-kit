@@ -1,0 +1,53 @@
+stages:
+  - build
+  - deploy
+
+build-dist:
+  stage: build
+  image: node:15.14.0-alpine3.13
+  script:
+    - yarn install
+    - yarn kit:build
+  only:
+    - develop
+    - master
+  tags:
+    - docker-admin
+  artifacts:
+     paths: 
+     -  dist
+  
+deploy-develop:
+  stage: deploy
+  image: node:15.14.0-alpine3.13
+  before_script: &before_script
+    - apk update 
+    - apk add rsync openssh-client tree
+    - mkdir -p ~/.ssh
+    - cp $SSH_PRIVATE_KEY ~/.ssh/id_rsa 
+    - chmod 700 ~/.ssh/id_rsa
+    - eval $(ssh-agent -s)
+    - ssh-add ~/.ssh/id_rsa
+    - echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config
+    - echo "" >> .npmrc && echo "//npm.05.ru/:_authToken=${VERDACCIO_TOKEN}" >> .npmrc
+  script:
+    - tree dist
+    - rsync -azP --delete --chmod=u+rwx,Fo+r,Do+rx 'dist/styleguide/' saburov@172.20.96.50:/home/saburov/www/ui-kit.05.ru/test
+  only:
+    - develop
+  tags:
+    - docker-admin
+
+
+deploy-production:
+  stage: deploy
+  image: node:15.14.0-alpine3.13
+  before_script: *before_script
+  script:
+    - tree dist
+    - rsync -azP --delete --chmod=u+rwx,Fo+r,Do+rx 'dist/styleguide/' saburov@172.20.96.50:/home/saburov/www/ui-kit.05.ru
+    - yarn publish
+  only:
+    - master
+  tags:
+    - docker-admin
